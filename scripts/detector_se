@@ -1,0 +1,51 @@
+import time
+import cv2
+import numpy as np
+import mediapipe as mp
+from tensorflow.keras.models import load_model
+from tensorflow.keras.preprocessing.image import img_to_array
+
+modelo = load_model("modelo/modelo_entrenado.h5")
+letras = list("ABCDEFGHIJKLMNÑOPQRSTUVWXYZ")
+ultima_letra = ""
+palabra = ""
+tiempo_ultima_sena = time.time()
+
+cap = cv2.VideoCapture(0)
+mp_hands = mp.solutions.hands
+hands = mp_hands.Hands()
+
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    resultados = hands.process(img_rgb)
+
+    if resultados.multi_hand_landmarks:
+        # Procesar imagen
+        img_resized = cv2.resize(frame, (64, 64))
+        img_array = img_to_array(img_resized) / 255.0
+        img_array = np.expand_dims(img_array, axis=0)
+        
+        pred = modelo.predict(img_array)
+        letra = letras[np.argmax(pred)]
+
+        if letra != ultima_letra:
+            palabra += letra
+            ultima_letra = letra
+            tiempo_ultima_sena = time.time()
+
+    # Reiniciar si pasan 10 segundos sin nueva letra
+    if time.time() - tiempo_ultima_sena > 5 and palabra:
+        print("Palabra detectada:", palabra)
+        palabra = ""
+        ultima_letra = ""
+
+    cv2.imshow("Traducción en Tiempo Real", frame)
+    if cv2.waitKey(1) & 0xFF == ord("q"):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
