@@ -9,6 +9,15 @@ mp_draw = mp.solutions.drawing_utils
 # Iniciar la cámara
 cap = cv2.VideoCapture(0)
 
+# Establecer resolución HD (1280x720)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
+
+# Crear ventana en modo pantalla completa
+cv2.namedWindow("Deteccion de Mano", cv2.WND_PROP_FULLSCREEN)
+cv2.setWindowProperty("Deteccion de Mano", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+
 while True:
     success, img = cap.read()
     if not success:
@@ -22,7 +31,7 @@ while True:
         for hand_landmarks in results.multi_hand_landmarks:
             mp_draw.draw_landmarks(img, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
-    # Mostrar imagen
+    # Mostrar imagen en pantalla completa
     cv2.imshow("Deteccion de Mano", img)
 
     # Salir con 'q'
