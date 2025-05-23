@@ -9,20 +9,32 @@ import joblib
 
 # Configura tu conexión PostgreSQL
 DB_USER = "usr_traductor"
-DB_PASSWORD = "NVILfbkCxpEqMNWLAJBY9JxnDSSaUNXy"
-DB_HOST = "dpg-d044scruibrs73aoldfg-a.oregon-postgres.render.com"
+DB_PASSWORD = "oUxJEZ59sw6bPZdBBPfSvJNUBzTlkQ5f"
+DB_HOST = "dpg-d0mjg0e3jp1c738dep3g-a.oregon-postgres.render.com"
 DB_PORT = "5432"
-DB_NAME = "lenguaje_senias"
+DB_NAME = "lenguaje_senias_g7z9"
 
 # Crear motor de conexión
 engine = create_engine(f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}')
 
-# Leer datos desde la tabla
-df = pd.read_sql_table('datos_senas', engine)
+# Leer ambas tablas
+df_senas = pd.read_sql_table('datos_senas', engine)
+df_numeros = pd.read_sql_table('datos_numeros', engine)
+
+# Añadir columnas faltantes a datos_senas para tener 126 coordenadas
+for i in range(21, 42):
+    df_senas[f'x{i}'] = 0.0
+    df_senas[f'y{i}'] = 0.0
+    df_senas[f'z{i}'] = 0.0
+
+# Unir columnas comunes
+columnas = [f'{axis}{i}' for i in range(42) for axis in ('x', 'y', 'z')]
+columnas.append('label')
+df_total = pd.concat([df_senas[columnas], df_numeros[columnas]], ignore_index=True)
 
 # Separar entrada (X) y salida (y)
-X = df.drop(['id', 'label'], axis=1)
-y = df['label']
+X = df_total.drop(['label'], axis=1)
+y = df_total['label']
 
 # Codificar letras como números
 encoder = LabelEncoder()
@@ -34,8 +46,8 @@ X_train, X_test, y_train, y_test = train_test_split(X, y_categorical, test_size=
 
 # Crear modelo
 model = Sequential([
-    Dense(128, activation='relu', input_shape=(63,)),
-    Dense(64, activation='relu'),
+    Dense(256, activation='relu', input_shape=(126,)),
+    Dense(128, activation='relu'),
     Dense(len(y_categorical[0]), activation='softmax')
 ])
 
@@ -48,4 +60,4 @@ model.fit(X_train, y_train, epochs=30, batch_size=16, validation_data=(X_test, y
 model.save("modelo_senas.h5")
 joblib.dump(encoder, "label_encoder.pkl")
 
-print("\n✅ Modelo entrenado y guardado como 'modelo_senas.h5'")
+print("\n✅ Modelo unificado entrenado y guardado como 'modelo_senas.h5'")
