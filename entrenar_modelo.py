@@ -6,6 +6,7 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.utils import to_categorical
 import joblib
+import tensorflow as tf
 
 # Configura tu conexión PostgreSQL
 DB_USER = "usr_traductor"
@@ -56,8 +57,14 @@ model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accur
 # Entrenar
 model.fit(X_train, y_train, epochs=30, batch_size=16, validation_data=(X_test, y_test))
 
-# Guardar modelo y codificador
-model.save("modelo_senas.h5")
+# Guardar codificador
 joblib.dump(encoder, "label_encoder.pkl")
 
-print("\n✅ Modelo unificado entrenado y guardado como 'modelo_senas.h5'")
+# Guardar modelo 
+converter = tf.lite.TFLiteConverter.from_keras_model(model)
+modelo_tflite = converter.convert()
+with open("modelo_senas.tflite", "wb") as f:
+    f.write(modelo_tflite)
+
+print("\n✅ Modelo entrenado y guardado como 'modelo_senas.tflite'")
+print("✅ Codificador guardado como 'label_encoder.pkl'")
