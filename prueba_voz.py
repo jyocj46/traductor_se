@@ -33,6 +33,9 @@ umbral_consistencia = 7
 letra_anterior = ""
 tiempo_inicio = None
 prev_time = time.time()
+tiempo_ultima_letra_confirmada = time.time()
+esperando_decir = False
+contador_espera_activo = False
 
 # Configurar resolución de cámara alta y captura
 cap = cv2.VideoCapture(0)
@@ -57,6 +60,7 @@ while True:
     puntos = []
 
     if result and result.multi_hand_landmarks:
+        contador_espera_activo = False  # Cancelar el temporizador si hay manos visibles
         cantidad_manos = len(result.multi_hand_landmarks)
         for hand_landmarks in result.multi_hand_landmarks:
             for lm in hand_landmarks.landmark:
@@ -88,6 +92,8 @@ while True:
                         buffer_predicciones.clear()
                         tiempo_inicio = None
                         letra_anterior = ""
+                        tiempo_ultima_letra_confirmada = time.time()
+                        esperando_decir = True
                 else:
                     letra_anterior = letra
                     tiempo_inicio = time.time()
@@ -100,6 +106,13 @@ while True:
     else:
         letra_anterior = ""
         tiempo_inicio = None
+
+        # Si hay palabra escrita y no se están detectando manos, activa el temporizador
+        if palabra_actual and not contador_espera_activo:
+            tiempo_ultima_letra_confirmada = time.time()
+            esperando_decir = True
+            contador_espera_activo = True
+
 
     # Panel lateral
     panel_ancho = 300
@@ -135,8 +148,30 @@ while True:
     x_text = int((ancho + panel_ancho - tw) / 2)
     cv2.putText(frame, palabra_actual, (x_text, alto - 25), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 0), 3)
 
+    # Barra de progreso azul (para hablar automáticamente tras 3 segundos)
+    if esperando_decir and palabra_actual and contador_espera_activo:
+        progreso_habla = min((time.time() - tiempo_ultima_letra_confirmada) / 3.0, 1.0)
+        barra_azul_x = 50
+        barra_azul_y = alto - 20
+        barra_azul_ancho = ancho + panel_ancho - 100
+        barra_azul_alto = 10
+        cv2.rectangle(frame, (barra_azul_x, barra_azul_y), (barra_azul_x + barra_azul_ancho, barra_azul_y + barra_azul_alto), (200, 200, 255), 2)
+        cv2.rectangle(frame, (barra_azul_x, barra_azul_y), (barra_azul_x + int(barra_azul_ancho * progreso_habla), barra_azul_y + barra_azul_alto), (255, 120, 0), -1)
+
+
+
     # Mostrar ventana
     cv2.imshow("Traductor IA", frame)
+
+    # 🔔 Si han pasado 3 segundos sin letras nuevas, decir automáticamente la frase
+    if esperando_decir and palabra_actual and contador_espera_activo and (time.time() - tiempo_ultima_letra_confirmada >= 3):
+        print(f"🗣️ Hablando automáticamente: {palabra_actual}")
+        voz.say(palabra_actual)
+        voz.runAndWait()
+        palabra_actual = ""
+        letra_mostrada = ""
+        esperando_decir = False
+
 
     key = cv2.waitKey(1)
 
@@ -149,6 +184,9 @@ while True:
             palabra_actual += " "
         else:
             palabra_actual += letra_mostrada
+            tiempo_ultima_letra_confirmada = time.time()
+            esperando_decir = True
+
         print(f"✅ Letra confirmada: {letra_mostrada}")
         buffer_predicciones.clear()
     elif key == ord('v') and palabra_actual:
