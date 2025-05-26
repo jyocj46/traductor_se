@@ -27,7 +27,7 @@ cap = cv2.VideoCapture(0)
 
 print("\n[CAPTURA NÚMEROS] Usa DOS MANOS para hacer la seña. Presiona ESC para salir.\n")
 
-label = input("👉 ¿Qué deseas capturar? (ej. 6, 7, 8, 9, UWU): ").strip().upper()
+label = input("👉 ¿Qué deseas capturar?: ").strip().upper()
 if not label:
     print("❌ Entrada vacía. Terminando programa.")
     sys.exit()
