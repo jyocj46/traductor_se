@@ -7,11 +7,24 @@ import joblib
 from collections import deque
 import pyttsx3
 import time
+from sqlalchemy import create_engine
+import pandas as pd
 
 # Configuración de voz
 voz = pyttsx3.init()
 voz.setProperty('rate', 140)
 voz.setProperty('voice', voz.getProperty('voices')[0].id)
+
+# Conexión a base de datos para obtener palabras válidas
+DB_USER = "usr_traductor"
+DB_PASSWORD = "oUxJEZ59sw6bPZdBBPfSvJNUBzTlkQ5f"
+DB_HOST = "dpg-d0mjg0e3jp1c738dep3g-a.oregon-postgres.render.com"
+DB_PORT = "5432"
+DB_NAME = "lenguaje_senias_g7z9"
+engine = create_engine(f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}')
+
+# Leer palabras válidas
+palabras_validas = set(pd.read_sql_table('palabras', engine)['palabra'].str.upper())
 
 # Cargar modelo y codificador
 interpreter = tf.lite.Interpreter(model_path="modelo_senas.tflite")
@@ -32,21 +45,19 @@ letra_mostrada = ""
 umbral_consistencia = 7
 letra_anterior = ""
 tiempo_inicio = None
-prev_time = time.time()
 tiempo_ultima_letra_confirmada = time.time()
 esperando_decir = False
 contador_espera_activo = False
 
-# Configurar resolución de cámara alta y captura
+# Cámara
 cap = cv2.VideoCapture(0)
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 960)   # HD
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 960)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 540)
 
-print("🖐️ Traductor iniciado. Presiona ESPACIO para confirmar letra, 'v' para decir la palabra, 'ESC' para salir.")
-
-# Crear ventana pantalla completa
 cv2.namedWindow("Traductor IA", cv2.WINDOW_NORMAL)
 cv2.setWindowProperty("Traductor IA", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+
+print("🖐️ Traductor iniciado. Presiona ESPACIO para confirmar letra, 'v' para decir la palabra, 'ESC' para salir.")
 
 while True:
     ret, frame = cap.read()
@@ -60,7 +71,7 @@ while True:
     puntos = []
 
     if result and result.multi_hand_landmarks:
-        contador_espera_activo = False  # Cancelar el temporizador si hay manos visibles
+        contador_espera_activo = False
         cantidad_manos = len(result.multi_hand_landmarks)
         for hand_landmarks in result.multi_hand_landmarks:
             for lm in hand_landmarks.landmark:
@@ -88,45 +99,48 @@ while True:
                             palabra_actual += " "
                         else:
                             palabra_actual += letra
+
                         print(f"✅ Letra confirmada automáticamente: {letra}")
                         buffer_predicciones.clear()
                         tiempo_inicio = None
                         letra_anterior = ""
                         tiempo_ultima_letra_confirmada = time.time()
                         esperando_decir = True
+
+                        if palabra_actual.strip().upper() in palabras_validas:
+                            print(f"🗣️ Palabra reconocida: {palabra_actual.strip()}")
+                            voz.say(palabra_actual.strip())
+                            voz.runAndWait()
+                            palabra_actual = ""
+                            letra_mostrada = ""
+                            esperando_decir = False
                 else:
                     letra_anterior = letra
                     tiempo_inicio = time.time()
 
             letra_mostrada = letra
 
-        for hand_landmarks in result.multi_hand_landmarks:
-            mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
-
+        # for hand_landmarks in result.multi_hand_landmarks:
+        #     mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
     else:
         letra_anterior = ""
         tiempo_inicio = None
-
-        # Si hay palabra escrita y no se están detectando manos, activa el temporizador
         if palabra_actual and not contador_espera_activo:
             tiempo_ultima_letra_confirmada = time.time()
             esperando_decir = True
             contador_espera_activo = True
 
-
-    # Panel lateral
+    # UI lateral
     panel_ancho = 300
     panel = np.ones((alto, panel_ancho, 3), dtype=np.uint8) * 255
     cv2.rectangle(panel, (0, 0), (panel_ancho-1, alto-1), (100, 100, 100), 2)
     cv2.putText(panel, "Letra detectada", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (50, 50, 50), 2)
-
     letra_grande = letra_mostrada if letra_mostrada else "-"
     (tw, th), _ = cv2.getTextSize(letra_grande, cv2.FONT_HERSHEY_SIMPLEX, 4, 8)
     x_text = int((panel_ancho - tw) / 2)
     y_text = int((alto + th) / 2)
     cv2.putText(panel, letra_grande, (x_text, y_text), cv2.FONT_HERSHEY_SIMPLEX, 4, (0, 102, 204), 8)
 
-    # Barra de progreso
     duracion_objetivo = 1.0
     barra_ancho = 200
     barra_altura = 20
@@ -141,14 +155,12 @@ while True:
 
     frame = np.hstack((frame, panel))
 
-    # Texto inferior
     cv2.rectangle(frame, (0, alto - 80), (ancho + panel_ancho, alto), (255, 255, 255), -1)
     cv2.line(frame, (0, alto - 80), (ancho + panel_ancho, alto - 80), (100, 100, 100), 2)
     (tw, th), _ = cv2.getTextSize(palabra_actual, cv2.FONT_HERSHEY_SIMPLEX, 1.5, 3)
     x_text = int((ancho + panel_ancho - tw) / 2)
     cv2.putText(frame, palabra_actual, (x_text, alto - 25), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 0), 3)
 
-    # Barra de progreso azul (para hablar automáticamente tras 3 segundos)
     if esperando_decir and palabra_actual and contador_espera_activo:
         progreso_habla = min((time.time() - tiempo_ultima_letra_confirmada) / 3.0, 1.0)
         barra_azul_x = 50
@@ -158,12 +170,8 @@ while True:
         cv2.rectangle(frame, (barra_azul_x, barra_azul_y), (barra_azul_x + barra_azul_ancho, barra_azul_y + barra_azul_alto), (200, 200, 255), 2)
         cv2.rectangle(frame, (barra_azul_x, barra_azul_y), (barra_azul_x + int(barra_azul_ancho * progreso_habla), barra_azul_y + barra_azul_alto), (255, 120, 0), -1)
 
-
-
-    # Mostrar ventana
     cv2.imshow("Traductor IA", frame)
 
-    # 🔔 Si han pasado 3 segundos sin letras nuevas, decir automáticamente la frase
     if esperando_decir and palabra_actual and contador_espera_activo and (time.time() - tiempo_ultima_letra_confirmada >= 3):
         print(f"🗣️ Hablando automáticamente: {palabra_actual}")
         voz.say(palabra_actual)
@@ -172,10 +180,8 @@ while True:
         letra_mostrada = ""
         esperando_decir = False
 
-
     key = cv2.waitKey(1)
-
-    if key == 27:  # ESC
+    if key == 27:
         break
     elif key == 32 and letra_mostrada:
         if letra_mostrada == "DEL":
@@ -189,6 +195,15 @@ while True:
 
         print(f"✅ Letra confirmada: {letra_mostrada}")
         buffer_predicciones.clear()
+
+        if palabra_actual.strip().upper() in palabras_validas:
+            print(f"🗣️ Palabra reconocida: {palabra_actual.strip()}")
+            voz.say(palabra_actual.strip())
+            voz.runAndWait()
+            palabra_actual = ""
+            letra_mostrada = ""
+            esperando_decir = False
+
     elif key == ord('v') and palabra_actual:
         print(f"🗣️ Hablando: {palabra_actual}")
         voz.say(palabra_actual)
